@@ -6,7 +6,7 @@ import random
 from tools import *
 import socket
 
-thread_pool = threading.Semaphore(value=3)
+thread_pool = threading.Semaphore(value=50)
 
 def query_ipv4(host,num):
     print("Query[%d]:%s Ver:4"%(num,host))
