@@ -57,4 +57,6 @@ while True:
             thread.join()
         print("stop")
         time.sleep(5)
+    else:
+        time.sleep(random.random()*0.5)
 
