@@ -35,7 +35,7 @@ counter = 0
 threads = []
 
 while True:
-    q = sources[int(random.random()*9677)]
+    q = queries[int(random.random()*9677)]
     #s = 'https://www.baidu.com'
     thread_pool.acquire()
     if q['type'] == 'A':
