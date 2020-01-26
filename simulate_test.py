@@ -13,16 +13,20 @@ def query_ipv4(host,num):
     try:
         socket.gethostbyname(host)
     except:
-        exit(0)
+        ok = 1
         # do nothing
+    thread_pool.release()
+    sys.exit()
 
 def query_ipv6(host,num):
     print("Query[%d]:%s Ver:6"%(num,host))
     try:
         socket.getaddrinfo(host, None, socket.AF_INET6)
     except:
-        exit(0)
+        ok = 1
         # do nothing
+    thread_pool.release()
+    sys.exit()
 
 queries = get_all_client_queries('formal_query.log')
 total = len(queries)
@@ -52,5 +56,5 @@ while True:
         for thread in threads:
             thread.join()
         print("stop")
-        time.sleep(10)
+        time.sleep(5)
 
