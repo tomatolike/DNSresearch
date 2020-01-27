@@ -6,8 +6,6 @@ import random
 from tools import *
 import socket
 
-thread_pool = threading.Semaphore(value=50)
-
 def query_ipv4(host,num):
     print("Query[%d]:%s Ver:4"%(num,host))
     try:
@@ -15,7 +13,6 @@ def query_ipv4(host,num):
     except:
         ok = 1
         # do nothing
-    thread_pool.release()
     sys.exit()
 
 def query_ipv6(host,num):
@@ -25,7 +22,6 @@ def query_ipv6(host,num):
     except:
         ok = 1
         # do nothing
-    thread_pool.release()
     sys.exit()
 
 queries = get_all_client_queries('formal_query.log')
@@ -41,7 +37,6 @@ threads = []
 while True:
     q = queries[int(random.random()*9677)]
     #s = 'https://www.baidu.com'
-    thread_pool.acquire()
     if q['type'] == 'A':
         newthread = threading.Thread(target=query_ipv4, args=(q['addr'], counter, ))
         newthread.start()
