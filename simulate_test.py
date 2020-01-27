@@ -5,7 +5,7 @@ import threading
 import random
 from tools import *
 import socket
-
+import datetime
 def query_ipv4(host,num):
     print("Query[%d]:%s Ver:4"%(num,host))
     try:
@@ -50,7 +50,8 @@ while True:
     if counter % 50 == 0:
         for thread in threads:
             thread.join()
-        print("stop")
+        ts = datetime.datetime.now()
+        print("stop",ts.strftime("%Y.%m.%d-%H:%M:%S"))
         time.sleep(5)
     else:
         time.sleep(random.random()*0.5)
