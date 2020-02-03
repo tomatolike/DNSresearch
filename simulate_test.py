@@ -3,7 +3,7 @@ import sys
 import os
 import threading
 import random
-from tools import *
+from tools import get_all_client_queries
 import socket
 import datetime
 def query_ipv4(host,num):

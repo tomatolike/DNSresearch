@@ -1,0 +1,2 @@
+PKT[16415] Fault: get no ns query
+PKT[43284] Fault: get no ns query

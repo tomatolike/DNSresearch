@@ -1,8 +1,10 @@
 import pyshark
 import os
+from tools import root_servers
+from tools import packet_loader
 
-#capture = pyshark.LiveCapture(interface='eth0')
-capture = pyshark.LiveCapture(interface='wlan0')
+RS = root_servers()
+PL = packet_loader()
 
 number = 0
 fn = 0
@@ -20,9 +22,16 @@ max_prefetch = 0
 max_parral = 0
 com_num = 0
 
-for packet in capture.sniff_continuously():
-    number += 1
+basedir = ""
 
+packets = pyshark.FileCapture('res/all.pcap')
+
+f = open(basedir + "output"+str(fn)+".txt","a+")
+
+for packet in packets:
+    number += 1
+    if number > 4300001:
+        break
     try:
 
         port = 0
@@ -43,6 +52,9 @@ for packet in capture.sniff_continuously():
         if 'DNS' in packet:
             src = packet.ip.src_host
             dst = packet.ip.dst_host
+
+            if RS.testrootserver(src) == False and RS.testrootserver(dst) == False:
+                continue
 
             timestamp = float(packet.sniff_timestamp)
 
@@ -89,26 +101,14 @@ for packet in capture.sniff_continuously():
             if "ns" in packet.dns.field_names:
                 ns = str(packet.dns.ns)
             
+            #times[number] = timestamp
             
-
-            f = open("res/output"+str(fn)+".txt","a+")
-            ff = open("res/red.txt","a+")
-            
-            print("\nPacket: number[%d] timestamp[%f] parral[%d]/prefetch[%d]/redundant[%d:%d]/query[%d] max_parral[%f] max_prefetch[%f]"%(number, timestamp, parral_num, prefetch_num, redundant_num, com_num, query_num, max_parral, max_prefetch, ))
-
-            times[number] = timestamp
-            f.write("\nPacket: number[%d] timestamp[%f] parral[%d]/prefetch[%d]/redundant[%d]/query[%d] max_parral[%f] max_prefetch[%f]\n"%(number, timestamp, parral_num, prefetch_num, redundant_num, query_num, max_parral, max_prefetch, ))
-            print("from [",src,"] to [",dst,"]: query[",qry_name,"] query_type[",qry_type,"] response_to[",response_to,"] response_type[",resp_type,"] flag[",flag,"] ns[",ns,"] ttl[",resp_ttl,"] res[",resp_name,"] res_a[",res_a,"] res_a6[",res_a6,"]")
-            string = "from ["+src+"] to ["+dst+"]: query["+qry_name+"] query_type["+str(qry_type)+"] response_to["+str(response_to)+"] response_type["+str(resp_type)+"] flag["+str(flag)+"] ns["+ns+"] ttl["+str(resp_ttl)+"] res["+resp_name+"] res_a["+res_a+"] res_a6["+res_a6+"]\n"
-            f.write(string)
-
-
             # Redundant Analyze
             if response_to != 'NO':
                 # this is a response
-                if flag == 0 and (resp_type == 1 or resp_type == 28 or resp_type == 2):
+                if (resp_type == 1 or resp_type == 28 or resp_type == 2):
                     key = str(resp_type) + "_" + resp_name
-                    query_time = times[response_to]
+                    query_time = float(PL.get_packet_num(response_to)['_source']['layers']['frame']['frame.time_epoch'])
                     if key in cache:
                         cachelen = len(cache[key])
                         ind = cachelen - 1
@@ -125,27 +125,36 @@ for packet in capture.sniff_continuously():
                             last_qtime = cache2[key][cachelen-1]
 
                         if query_time > last_time and query_time <= last_time + resp_ttl:
+                            
+                            string = "from ["+src+"] to ["+dst+"]: query["+qry_name+"] query_type["+str(qry_type)+"] response_to["+str(response_to)+"] response_type["+str(resp_type)+"] flag["+str(flag)+"] ns["+ns+"] ttl["+str(resp_ttl)+"] res["+resp_name+"] res_a["+res_a+"] res_a6["+res_a6+"]\n"
                             if query_time >= last_time + resp_ttl - 5 and resp_ttl >= 9:
-                                print("Prefecthing[%d]: last[%f] ttl[%d] now[%f] t_time[%f] diff[%f] name[%s] from[%s]"%(fn, last_time, resp_ttl, query_time, last_time + resp_ttl - query_time, query_time - last_qtime, resp_name, src, ))
+                                print("\nPacket: number[%d] timestamp[%f] parral[%d]/prefetch[%d]/redundant[%d]/query[%d] max_parral[%f] max_prefetch[%f]"%(number, timestamp, parral_num, prefetch_num, redundant_num, query_num, max_parral, max_prefetch, ))
+                                print("Prefecthing[%d]: last[%f] ttl[%d] now[%f] t_time[%f] diff[%f] name[%s] from[%s]"%(number, last_time, resp_ttl, query_time, last_time + resp_ttl - query_time, query_time - last_qtime, resp_name, src, ))
+                                f.write("\nPacket: number[%d] timestamp[%f] parral[%d]/prefetch[%d]/redundant[%d]/query[%d] max_parral[%f] max_prefetch[%f]\n"%(number, timestamp, parral_num, prefetch_num, redundant_num, query_num, max_parral, max_prefetch, ))
+                                f.write(string)
                                 f.write("Prefecthing[%d]: last[%f] ttl[%d] now[%f] t_time[%f] diff[%f] name[%s] from[%s]\n"%(fn, cache[key], resp_ttl, query_time, last_time + resp_ttl - query_time, query_time - last_qtime, resp_name, src, ))
-                                ff.write("Prefecthing[%d]: last[%f] ttl[%d] now[%f] t_time[%f] diff[%f] name[%s] from[%s]\n"%(fn, cache[key], resp_ttl, query_time, last_time + resp_ttl - query_time, query_time - last_qtime, resp_name, src, ))
                                 prefetch_num += 1
                                 if last_time + resp_ttl - query_time > max_prefetch:
                                     max_prefetch = last_time + resp_ttl - query_time
                             elif query_time - last_qtime < 2:
-                                print("Parral[%d]: last[%f] ttl[%d] now[%f] t_time[%f] diff[%f] name[%s] from[%s]"%(fn, last_time, resp_ttl, query_time, last_time + resp_ttl - query_time, query_time - last_qtime, resp_name, src, ))
+                                print("\nPacket: number[%d] timestamp[%f] parral[%d]/prefetch[%d]/redundant[%d]/query[%d] max_parral[%f] max_prefetch[%f]"%(number, timestamp, parral_num, prefetch_num, redundant_num, query_num, max_parral, max_prefetch, ))
+                                print("Parral[%d]: last[%f] ttl[%d] now[%f] t_time[%f] diff[%f] name[%s] from[%s]"%(number, last_time, resp_ttl, query_time, last_time + resp_ttl - query_time, query_time - last_qtime, resp_name, src, ))
+                                f.write("\nPacket: number[%d] timestamp[%f] parral[%d]/prefetch[%d]/redundant[%d]/query[%d] max_parral[%f] max_prefetch[%f]\n"%(number, timestamp, parral_num, prefetch_num, redundant_num, query_num, max_parral, max_prefetch, ))
+                                f.write(string)
                                 f.write("Parral[%d]: last[%f] ttl[%d] now[%f] t_time[%f] diff[%f] name[%s] from[%s]\n"%(fn, last_time, resp_ttl, query_time, last_time+ resp_ttl - query_time, query_time - last_qtime, resp_name, src, ))
-                                ff.write("Parral[%d]: last[%f] ttl[%d] now[%f] t_time[%f] diff[%f] name[%s] from[%s]\n"%(fn, last_time, resp_ttl, query_time, last_time + resp_ttl - query_time, query_time - last_qtime, resp_name, src, ))
                                 parral_num += 1
                                 if query_time - last_qtime > max_parral:
                                     max_parral = query_time - last_qtime
                             else:
-                                print("Redundant[%d]: last[%f] ttl[%d] now[%f] p_time[%f] diff[%f] name[%s] from[%s]"%(fn, last_time, resp_ttl, query_time, query_time - last_time, query_time - last_qtime, resp_name, src, ))
+                                print("\nPacket: number[%d] timestamp[%f] parral[%d]/prefetch[%d]/redundant[%d]/query[%d] max_parral[%f] max_prefetch[%f]"%(number, timestamp, parral_num, prefetch_num, redundant_num, query_num, max_parral, max_prefetch, ))
+                                print("Redundant[%d]: last[%f] ttl[%d] now[%f] p_time[%f] diff[%f] name[%s] from[%s]"%(number, last_time, resp_ttl, query_time, query_time - last_time, query_time - last_qtime, resp_name, src, ))
+                                f.write("\nPacket: number[%d] timestamp[%f] parral[%d]/prefetch[%d]/redundant[%d]/query[%d] max_parral[%f] max_prefetch[%f]\n"%(number, timestamp, parral_num, prefetch_num, redundant_num, query_num, max_parral, max_prefetch, ))
+                                f.write(string)
                                 f.write("Redundant[%d]: last[%f] ttl[%d] now[%f] p_time[%f] diff[%f] name[%s] from[%s]\n"%(fn, last_time, resp_ttl, query_time, query_time - last_time, query_time - last_qtime, resp_name, src, ))
-                                ff.write("Redundant[%d]: last[%f] ttl[%d] now[%f] p_time[%f] diff[%f] name[%s] from[%s]\n"%(fn, last_time, resp_ttl, query_time, query_time - last_time, query_time - last_qtime, resp_name, src, ))
                                 if resp_name == "com":
                                     com_num += 1
                                 redundant_num += 1
+                            
 
                         cache[key].append(timestamp)
                         cache2[key].append(query_time)
@@ -160,18 +169,9 @@ for packet in capture.sniff_continuously():
                 # this is a query
                 query_num += 1
 
-            f.close()
-            ff.close()
-
-            if os.path.getsize("/home/linick/Desktop/output"+str(fn)+".txt") > 1024*1024*1024*20:
+            if os.path.getsize(basedir + "output"+str(fn)+".txt") > 1024*1024*1024*20:
                 fn += 1
-
-            if number - keep > clean_bar:
-                for i in range(clean_bar,number - keep):
-                    if i in times:
-                        del times[i]
-                clean_bar = number - keep
         
     except: 
         pass
-
+f.close()

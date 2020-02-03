@@ -1,5 +1,6 @@
 import time
 from datetime import datetime
+import json
 
 def form_time_stamp(t):
     ta = datetime.strptime(t, "%d-%m-%Y %H:%M:%S.%f")
@@ -50,6 +51,17 @@ def getpktttls(line):
             else:
                 return 0
 
+def getqrytype(line):
+    parts = line.split(" ")
+    for p in parts:
+        if "query_type[" in p:
+            ps = p.split("[")
+            pss = ps[1].split("]")
+            if pss[0] != "NO":
+                return int(pss[0])
+            else:
+                return 0
+
 def getqrypktnum(line):
     parts = line.split(" ")
     for p in parts:
@@ -73,6 +85,28 @@ def getresname(line):
     parts = line.split(" ")
     for p in parts:
         if "res[" in p:
+            ps = p.split("[")
+            pss = ps[1].split("]")
+            if pss[0] != "NO":
+                return pss[0]
+            else:
+                return "NO"
+
+def getqueryname(line):
+    parts = line.split(" ")
+    for p in parts:
+        if "query[" in p:
+            ps = p.split("[")
+            pss = ps[1].split("]")
+            if pss[0] != "NO":
+                return pss[0]
+            else:
+                return "NO"
+
+def getfromip(line):
+    parts = line.split(" ")
+    for p in parts:
+        if "from[" in p:
             ps = p.split("[")
             pss = ps[1].split("]")
             if pss[0] != "NO":
@@ -133,8 +167,133 @@ def get_all_client_queries(file1):
             count += 1
             q = {'addr':addr, 'type':parts[9], 'time':float(parts[1])}
             queries.append(q)
+    print(count)
 
     #print(queries)
     return queries
-    #get_all_client_queries('res/formal_query.log')
+#get_all_client_queries('formal_query.log')
 
+def split_date_into_parts(file1, num):
+    f = open(file1,'r')
+    lines = []
+    string = ""
+    l = f.readline()
+    count = 0
+    index = 0
+    packets = []
+    while True:
+        l = f.readline()
+        if len(lines) == 0:
+            if l == "  {\n":
+                lines.append(l)
+            else:
+                continue
+        else:
+            lines.append(l)
+        if l == "  }\n":
+            string = ''.join(lines)
+            p = json.loads(string)
+            count += 1
+            lines = []
+            packets.append(p)
+        if count == num:
+            ff = open("sub/"+str(index)+".json","w+")
+            string = json.dumps(packets)
+            ff.write(string)
+            ff.close()
+            packets = []
+            print(str(index)+".txt done")
+            index += 1
+            count = 0
+
+#split_date_into_parts("res/all.pcap",50000)
+
+class packet_loader:
+
+    def __init__(self):
+        self.packets = {}
+        self.bufpackets = {}
+        self.file_now = 0
+        self.loadpackets(0)
+        self.file_buf = -1
+        
+    def loadpackets(self, num):
+        with open("sub/"+str(num)+".json") as f:
+            packets_json = json.load(f)
+            f.close()
+        count = 0
+        self.packets = {}
+        for p in packets_json:
+            count += 1
+            self.packets[count] = p
+        self.file_now = num
+
+    def loadbufpackets(self, num):
+        with open("sub/"+str(num)+".json") as f:
+            packets_json = json.load(f)
+            f.close()
+        count = 0
+        self.bufpackets = {}
+        for p in packets_json:
+            count += 1
+            self.bufpackets[count] = p
+        self.file_buf = num
+
+    def get_packet_num(self, num, log=""):
+        fileindex = int((num-1) / 50000)
+
+        ind = num - fileindex * 50000
+
+        if fileindex == self.file_now:
+            return self.packets[ind]
+        else:
+            self.loadpackets(fileindex)
+            return self.packets[ind]
+        
+        # if fileindex == self.file_buf:
+        #     return self.bufpackets[ind]
+        
+        # if fileindex > self.file_now:
+        #     self.bufpackets = self.packets
+        #     self.file_buf = self.file_now
+        #     self.loadpackets(fileindex)
+        #     return self.packets[ind]
+        
+        # if fileindex < self.file_buf:
+        #     self.packets = self.bufpackets
+        #     self.file_now = self.file_buf
+        #     self.loadbufpackets(fileindex)
+        #     return self.bufpackets[ind]
+
+
+
+
+class root_servers:
+
+    def __init__(self):
+        f = open("rootserverlist.txt")
+        lines = f.readlines()
+        self.list = []
+        for l in lines:
+            self.list.append(l.replace("\n",""))
+        #print(self.list)
+        f.close()
+    def testrootserver(self, addr):
+        if addr in self.list:
+            return True
+        else:
+            return False
+
+def count_redundant_root_query():
+    f = open('res/red.txt')
+    lines = f.readlines()
+    f.close()
+    PL = root_servers()
+    count = 0
+    for l in lines:
+        fromip = getfromip(l)
+        if PL.testrootserver(fromip):
+            count += 1
+    print(count)
+
+#count_redundant_root_query()
