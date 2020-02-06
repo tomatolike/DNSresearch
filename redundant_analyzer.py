@@ -62,7 +62,7 @@ for packet in packets:
             if "qry_type" in packet.dns.field_names:
                 qry_type = int(packet.dns.qry_type)
 
-            if qry_type != 1 and qry_type != 28:
+            if qry_type != 1 and qry_type != 28 and qry_type != 2:
                 continue
 
             qry_name = "NO"
