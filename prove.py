@@ -13,6 +13,9 @@ latency = []
 
 rate = float(sys.argv[1])
 
+socket.gethostbyname('www.google.com')
+socket.gethostbyname('www.yahoo.net')
+
 for l in lines:
     query = l.replace('\n','')
     banlist = BN.banlist(query)
@@ -31,3 +34,5 @@ for l in lines:
     latency.append(duration)
 
     BN.clean()
+
+    time.sleep(10)
