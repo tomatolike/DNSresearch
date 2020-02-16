@@ -1,10 +1,16 @@
 import pyshark
 import os
+import sys
 from tools import root_servers
-from tools import packet_loader
+from tools import packet_loader0
+
+sysfilename = sys.argv[1]
+print(sysfilename)
 
 RS = root_servers()
-PL = packet_loader()
+PL = packet_loader0('res/'+sysfilename+'.json')
+
+print(sysfilename,".json loading finished")
 
 number = 0
 fn = 0
@@ -24,16 +30,18 @@ com_num = 0
 
 basedir = ""
 
-packets = pyshark.FileCapture('res/all.pcap')
+packets = pyshark.FileCapture('res/'+sysfilename+'.pcap')
 
-f = open(basedir + "output"+str(fn)+".txt","a+")
+print(sysfilename,".pcap loading finished")
+
+f = open(basedir + sysfilename + "_output"+str(fn)+".txt","a+")
 
 for packet in packets:
     number += 1
-    if number > 4300001:
-        break
+    # if number > 4300001:
+    #     break
+    
     try:
-
         port = 0
         srcport = 0
         dstport = 0
@@ -62,7 +70,7 @@ for packet in packets:
             if "qry_type" in packet.dns.field_names:
                 qry_type = int(packet.dns.qry_type)
 
-            if qry_type != 1 and qry_type != 28 and qry_type != 2:
+            if qry_type != 1 and qry_type != 28:
                 continue
 
             qry_name = "NO"
@@ -174,4 +182,5 @@ for packet in packets:
         
     except: 
         pass
+    
 f.close()

@@ -1,8 +1,11 @@
 from tools import *
-
+import sys
 # Start analyzing 
 ## Read real-time analyze result:
-f = open('res/simple.txt')
+
+sysfilename = sys.argv[1]
+
+f = open('res/'+sysfilename+'.txt')
 lines = f.readlines()
 f.close()
 
@@ -13,11 +16,15 @@ redundant_com_count = 0
 succ = 0
 succ_com = 0
 i = 0
-Loader = packet_loader()
+Loader = packet_loader0('res/'+sysfilename+'.json')
 badf = open("analyze_res.txt","w+")
 times = []
 s_times = []
 RS = root_servers()
+real_list = []
+types = {}
+A_succ = 0
+A_com_succ = 0
 
 for i in range(0,len(lines)):
     if "Redundant[" in lines[i]:
@@ -37,6 +44,11 @@ for i in range(0,len(lines)):
 
         qry_type = getqrytype(lines[i-1])
 
+        if qry_type not in types.keys():
+            types[qry_type] = 1
+        else:
+            types[qry_type] += 1
+
         if red_qur_num > 4300000:
             redundant_count -= 1
             break
@@ -50,6 +62,8 @@ for i in range(0,len(lines)):
         query_ns = False
         add_on = -1
         ns_record_num = -1
+        real_query = ""
+        hasAAAA = False
         ### Find the pkt which ns record is received
         while True:
             p = Loader.get_packet_num(temp_num)
@@ -67,17 +81,19 @@ for i in range(0,len(lines)):
                         #print(nsrecord[k]['dns.resp.name'],ns)
                         ok = True
 
-                # if ok and "Queries" in dnslayer.keys():
-                #     for key in dnslayer["Queries"].keys():
-                #         if "dns.qry.name" in dnslayer["Queries"][key]:
-                #             #print(dnslayer["Queries"][key]["dns.qry.name"], nss)
-                #             if dnslayer["Queries"][key]["dns.qry.name"] in nss:
-                #                 query_ns = True
+                if ok and "Queries" in dnslayer.keys():
+                    for key in dnslayer["Queries"].keys():
+                        if "dns.qry.name" in dnslayer["Queries"][key]:
+                            real_query = dnslayer["Queries"][key]["dns.qry.name"]
+                            if dnslayer["Queries"][key]["dns.qry.name"] in nss:
+                                query_ns = True
 
                 if ok:
                     for k in nskeys:
                         if 'dns.aaaa' in nsrecord[k].keys():
                             temp_cache[nsrecord[k]['dns.aaaa']] = nsrecord[k]['dns.resp.name']
+                            if nsrecord[k]['dns.resp.name'] == ns:
+                                hasAAAA = True
                         if 'dns.a' in nsrecord[k].keys():
                             temp_cache[nsrecord[k]['dns.a']] = nsrecord[k]['dns.resp.name']
             except:
@@ -135,23 +151,36 @@ for i in range(0,len(lines)):
             print("PKT[%d] Fault: get no ns query"%(red_res_num, ))
             badf.write("PKT[%d] Fault: get no ns query\n"%(red_res_num, ))
             continue
-
+        
         ### Success
-        print("PKT[%d] Success"%(red_res_num, ))
+        
         succ += 1
         if "name[com]" in lines[i]:
             succ_com += 1
+        if query_ns == True:
+            real_list.append(real_query)
+
+        if qry_type == 28 and hasAAAA == False:
+            A_succ += 1
+            if "name[com]" in lines[i]:
+                A_com_succ += 1
            
 badf.close()
-print("SUC[%d]/ALL[%d]"%(succ,redundant_count,))
-print("COM:SUC[%d]/ALL[%d]"%(succ_com,redundant_com_count,))
+print("SUC[%d]/ALL[%d] AAAA[%d]"%(succ,redundant_count,A_succ,))
+print("COM:SUC[%d]/ALL[%d] AAAA[%d]"%(succ_com,redundant_com_count,A_com_succ))
+print(types)
 
-ff = open("timeouts.txt", "w+")
-for t in times:
-    ff.write(str(t)+"\n")
-ff.close()
+# ff = open("timeouts.txt", "w+")
+# for t in times:
+#     ff.write(str(t)+"\n")
+# ff.close()
 
-fff = open("s_timeouts.txt", "w+")
-for t in s_times:
-    fff.write(str(t)+"\n")
-fff.close()
+# fff = open("s_timeouts.txt", "w+")
+# for t in s_times:
+#     fff.write(str(t)+"\n")
+# fff.close()
+
+# ff = open("prove_evid.txt","w+")
+# t_list = {'list':real_list}
+# ff.write(json.dumps(t_list))
+# ff.close()

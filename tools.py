@@ -1,6 +1,8 @@
 import time
 from datetime import datetime
 import json
+import os
+import random
 
 def form_time_stamp(t):
     ta = datetime.strptime(t, "%d-%m-%Y %H:%M:%S.%f")
@@ -208,6 +210,43 @@ def split_date_into_parts(file1, num):
 
 #split_date_into_parts("res/all.pcap",50000)
 
+class packet_loader0:
+    def __init__(self, file):
+        self.packets = {}
+        self.loadpackets(file)
+
+    def loadpackets(self, file):
+        f = open(file,'r')
+        #print("loadfile",file)
+        lines = []
+        string = ""
+        l = f.readline()
+        count = 0
+        while True:
+            l = f.readline()
+            if not l:
+                break
+            if len(lines) == 0:
+                if l == "  {\n":
+                    lines.append(l)
+                else:
+                    continue
+            else:
+                lines.append(l)
+            if l == "  }\n":
+                string = ''.join(lines)
+                p = json.loads(string)
+                count += 1
+                lines = []
+                #print("load pkt", count)
+                self.packets[count] = p
+
+    def get_packet_num(self, num):
+        if num in self.packets.keys():
+            return self.packets[num]
+        else:
+            return "NO"
+
 class packet_loader:
 
     def __init__(self):
@@ -247,6 +286,7 @@ class packet_loader:
         if fileindex == self.file_now:
             return self.packets[ind]
         else:
+            print("seeker readfile:",fileindex)
             self.loadpackets(fileindex)
             return self.packets[ind]
         
@@ -266,7 +306,63 @@ class packet_loader:
         #     return self.bufpackets[ind]
 
 
+class packet_loader2:
 
+    def __init__(self):
+        self.packets = []
+        for i in range(0,5):
+            temp = {}
+            self.packets.append(temp)
+        self.file_now = 0
+        for i in range(0,5):
+            self.loadpackets(i, False)
+        
+    def loadpackets(self, num, first, dire=0):
+        fileindex = self.file_now + num
+        if first == False:
+            print("loader readfile:",fileindex)
+            with open("sub/"+str(fileindex)+".json") as f:
+                packets_json = json.load(f)
+                f.close()
+            count = 0
+            self.packets[num] = {}
+            for p in packets_json:
+                count += 1
+                self.packets[num][count] = p
+        else:
+            self.packets[num] = self.packets[num+dire]
+
+
+    def get_packet_num(self, num, log=""):
+        fileindex = int((num-1) / 50000)
+        #print("load pkt:",num,fileindex)
+
+        if fileindex >= self.file_now and fileindex <= self.file_now + 4:
+            ind = num - fileindex * 50000
+            return self.packets[fileindex - self.file_now][ind]
+        else:
+            if fileindex > self.file_now + 4:
+                if fileindex - (self.file_now + 4) == 1:
+                    self.file_now += 1
+                    for i in range(0,4):
+                        self.loadpackets(i, True, 1)
+                    self.loadpackets(4, False)
+                else:
+                    self.file_now = fileindex - 4
+                    for i in range(0, 5):
+                        self.loadpackets(i, False)
+            else:
+                if fileindex == self.file_now - 1:
+                    self.file_now -= 1
+                    for i in range(1,5):
+                        self.loadpackets(5-i, True, -1)
+                    self.loadpackets(0, False)
+                else:
+                    self.file_now = fileindex
+                    for i in range(0, 5):
+                        self.loadpackets(i, False)
+            ind = num - fileindex * 50000
+            return self.packets[fileindex - self.file_now][ind]
 
 class root_servers:
 
@@ -283,6 +379,44 @@ class root_servers:
             return True
         else:
             return False
+
+class top_servers:
+
+    def __init__(self):
+        f = open("topserverlist.txt")
+        lines = f.readlines()
+        self.list = []
+        for l in lines:
+            self.list.append(l.replace("\n",""))
+        print(self.list)
+        f.close()
+    def testtopserver(self, addr):
+        if addr in self.list:
+            return True
+        else:
+            return False
+
+class banner:
+
+    def __init__(self):
+        f = open("query_ns.json")
+        self.nss = {}
+        self.nss = json.load(f)
+        f.close()
+
+    def banlist(self, query):
+        if query in self.nss.keys():
+            return self.nss[query].keys()
+        else:
+            return []
+
+    def ban(self, ip, rate=1):
+        rand = random.random()
+        if rand >= rate:
+            os.system("sudo iptables -A INPUT -s "+ip+" -j DROP")
+
+    def clean(self):
+        os.system("sudo iptables -F")
 
 def count_redundant_root_query():
     f = open('res/red.txt')

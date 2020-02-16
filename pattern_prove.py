@@ -1,157 +1,205 @@
 from tools import *
-import os
-import socket
+import sys
 
-# Start analyzing 
-## Read real-time analyze result:
-f = open('res/simple.txt')
+filename = sys.argv[1]
+
+Loader = packet_loader0("res/"+filename+".json")
+
+RS = root_servers()
+
+TS = top_servers()
+
+BN = banner()
+
+f = open("query_time.txt")
 lines = f.readlines()
 f.close()
 
+pkt_num = 0
 
-## Go through all lines and find Redundant [com]
-redundant_count = 0
-redundant_com_count = 0
 succ = 0
-succ_com = 0
-fail1 = 0
-fail2 = 0
-i = 0
-Loader = packet_loader()
-cache = {}
-RS = root_servers()
-pf = open("prove_time.txt","w+")
+count = 0
+blocked = 0
+succ_block = 0
 
-for i in range(0,len(lines)):
-    if "Redundant[" in lines[i]:
-        ### Found a redundant
-        fip = getfromip(lines[i])
-        if RS.testrootserver(fip) == False:
-            continue
-        qry_type = getqrytype(lines[i-1])
-        if qry_type == 2:
-            continue
-        redundant_count += 1
-        if "name[com]" in lines[i]:
-            redundant_com_count += 1
-        ### Find out which ns it is querying
-        ns = [getqueryname(lines[i-1])]
-        red_res_num = getpktnumber(lines[i-2])
-        red_qur_num = getqrypktnum(lines[i-1])
+blocking_list = []
+meets = 0
 
-        if red_qur_num > 4300000:
-            redundant_count -= 1
+suc_names = []
+
+for l in lines:
+    parts = l.split(" ")
+    real_query = parts[0]
+    time = float(parts[1])
+
+    ### Try to find the start pkt
+    ok = False
+    while True:
+        pkt_num += 1
+
+        packet = Loader.get_packet_num(pkt_num)
+
+        if packet == "NO":
             break
-        print("PKT[%d] Found: response to [%d]"%(red_res_num, red_qur_num, ))
 
-        red_qry_time = float(Loader.get_packet_num(red_qur_num)['_source']['layers']['frame']['frame.time_epoch'])
-        
-        temp_num = red_qur_num - 1
-        temp_cache = {}
-        ok = False
-        query_ns = False
-        add_on = -1
-        ns_record_num = -1
-        ### Find the pkt which ns record is received
-        while True:
-            p = Loader.get_packet_num(temp_num)
-            query_ns = False
-            try:
-                dnslayer = p['_source']['layers']['dns']
+        if float(packet['_source']['layers']['frame']['frame.time_epoch']) > time + 20:
+            pkt_num -= 1
+            break
+
+        if not TS.testtopserver(packet['_source']['layers']['ip']['ip.dst']):
+            continue
+
+        try:
+            dnslayer = packet['_source']['layers']['dns']
+            if dnslayer['dns.flags_tree']['dns.flags.response'] == '1' or dnslayer['dns.flags_tree']['dns.flags.truncated'] == '1':
+                continue
+            for key in dnslayer['Queries'].keys():
+                if dnslayer['Queries'][key]['dns.qry.name'] == real_query and ( dnslayer['Queries'][key]['dns.qry.type']=='1' or dnslayer['Queries'][key]['dns.qry.type']=='28'):
+                    ok = True
+        except:
+            pass
+        if not ok:
+            continue
+        else:
+            break
+    if not ok:
+        continue
+    count += 1
+    print("Query:",real_query,pkt_num)
+    ### Try to find the ns
+    ok = False
+    temp_cache = {}
+    check_list = []
+    back_list = {}
+    while True:
+        pkt_num += 1
+
+        packet = Loader.get_packet_num(pkt_num)
+
+        if packet == "NO":
+            break
+
+        if float(packet['_source']['layers']['frame']['frame.time_epoch']) > time + 20:
+            pkt_num -= 1
+            break
+
+        try:
+            dnslayer = packet['_source']['layers']['dns']
+            temp_ok = False
+            if dnslayer['dns.flags_tree']['dns.flags.response'] != '1' or dnslayer['dns.flags_tree']['dns.flags.truncated'] == '1':
+                continue
+            for key in dnslayer['Queries'].keys():
+                if dnslayer['Queries'][key]['dns.qry.name'] == real_query:
+                    temp_ok = True
+
+            if temp_ok:
                 nsrecord = dnslayer['Additional records']
                 nskeys = nsrecord.keys()
-                #print("pkt[%d]:"%(temp_num,))
-                
-                nss = []
                 for k in nskeys:
-                    nss.append(nsrecord[k]['dns.resp.name'])
-                    if nsrecord[k]['dns.resp.name'] in ns:
-                        ### Found the ns record
-                        #print(nsrecord[k]['dns.resp.name'],ns)
-                        ok = True
-
-                if ok:
-                    for k in nskeys:
-                        if 'dns.aaaa' in nsrecord[k].keys():
-                            temp_cache[nsrecord[k]['dns.aaaa']] = nsrecord[k]['dns.resp.name']
-                        if 'dns.a' in nsrecord[k].keys():
-                            temp_cache[nsrecord[k]['dns.a']] = nsrecord[k]['dns.resp.name']
-            except:
-                pass
-            
-            if ok:
-                ns = nss
-                ns_record_num = temp_num
-                break
-
-            temp_num -= 1
-            if temp_num == 0:
-                break
-        
-        if ok == False:
-            print("PKT[%d] Fault: no ns record"%(red_res_num,))
-            fail1 += 1
-            continue
-
-        ### FInd the real query
-        real_query = ""
-        while True:
-            p = Loader.get_packet_num(temp_num)
-            query_ns = False
-            try:
-                dnslayer = p['_source']['layers']['dns']
-
-                if ok and "Queries" in dnslayer.keys():
-                    for key in dnslayer["Queries"].keys():
-                        if "dns.qry.name" in dnslayer["Queries"][key]:
-                            real_query = dnslayer["Queries"][key]["dns.qry.name"]
-                            if dnslayer["Queries"][key]["dns.qry.name"] in ns:
-                                query_ns = True
-
-                if query_ns == False:
-                    break
-            except:
-                pass
-            temp_num -= 1
-            if temp_num == 0:
-                break
-
-        if query_ns == True:
-            print("PKT[%d] Fault: no real query"%(red_res_num,))
-            fail2 += 1
-            continue
-
-        ###
-        print("SUCESS")
-        succ += 1
-        if "name[com]" in lines[i]:
-            succ_com += 1
-
-        if real_query not in cache.keys():
-            cache[real_query] = temp_cache
-
-        ### TEST
-        os.system("sudo iptables -F")
-        for ip in temp_cache.keys():
-            cmd = "sudo iptables -A OUTPUT -d "+ip+" -j  DROP"
-            os.system(cmd)
-        
-        print("Query:",real_query)
-        pf.write(real_query + " " + str(time.time()) + "\n")
-        try:
-            res = socket.gethostbyname(real_query)
-            print(res)
+                    if 'dns.aaaa' in nsrecord[k].keys():
+                        temp_cache[nsrecord[k]['dns.aaaa']] = nsrecord[k]['dns.resp.name']
+                        check_list.append(nsrecord[k]['dns.resp.name'])
+                    if 'dns.a' in nsrecord[k].keys():
+                        temp_cache[nsrecord[k]['dns.a']] = nsrecord[k]['dns.resp.name']
+                        check_list.append(nsrecord[k]['dns.resp.name'])
+                
+                nss = dnslayer['Authoritative nameservers']
+                nsnames = nss.keys()
+                for k in nsnames:
+                    if 'dns.ns' in nss[k].keys():
+                        back_list[nss[k]['dns.ns']] = 0
+                ok = True
+                
         except:
             pass
 
-        time.sleep(10)
+        if ok:
+            break
+    
+    #print(back_list.keys(), check_list)
+    # for key in back_list.keys():
+    #     if key not in check_list:
+    #         ok = False
+    #         break
+    
+    if not ok:
+        continue
+
+    print("NSs:",pkt_num)
+    ### Try to find the redundant queries
+    ok = False
+    if_blocked = True
+    not_blocked_num = 0
+    while True:
+        pkt_num += 1
+
+        packet = Loader.get_packet_num(pkt_num)
+
+        if packet == "NO":
+            break
+
+        if float(packet['_source']['layers']['frame']['frame.time_epoch']) > time + 20:
+            pkt_num -= 1
+            break
+
+        # if packet['_source']['layers']['ip']['ip.src'] in temp_cache.keys() or packet['_source']['layers']['ip']['ip.dst'] in temp_cache.keys():
+        #     if_blocked = False
+        #     not_blocked_num = pkt_num
+        #     continue
+
         
-pf.close()
 
-print("SUC[%d]/ALL[%d]"%(succ,redundant_count,),fail1,fail2)
-print("COM:SUC[%d]/ALL[%d]"%(succ_com,redundant_com_count,))
+        try:
+            dnslayer = packet['_source']['layers']['dns']
 
-ff = open("query_ns.txt","w+")
-string = json.dumps(cache)
-ff.write(string)
-ff.close()
+            for key in dnslayer['Queries'].keys():
+                if dnslayer['Queries'][key]['dns.qry.name'] == real_query:
+                    if int(dnslayer['dns.count.answers']) > 0:
+                        if_blocked = False
+                        not_blocked_num = pkt_num
+                        break
+
+            if not RS.testrootserver(packet['_source']['layers']['ip']['ip.dst']):
+                continue
+            for key in dnslayer['Queries'].keys():
+                if dnslayer['Queries'][key]['dns.qry.name'] in back_list.keys():
+                    ok = True
+        except:
+            pass
+
+        if ok:
+            break
+
+    if ok:
+        succ += 1
+
+    if_firstmeet = False
+    for key in back_list.keys():
+        if key not in blocking_list:
+            if_firstmeet = True
+
+    if if_blocked:
+        blocked += 1
+        if ok:
+            succ_block += 1
+            if len(BN.banlist(real_query)) > 0:
+                suc_names.append(real_query)
+
+    if if_blocked:
+        for key in back_list.keys():
+            blocking_list.append(key)
+
+    if not ok and if_blocked and not if_firstmeet:
+        meets += 1
+
+    print("Succ:",ok,pkt_num," Block:",if_blocked, not_blocked_num, pkt_num, if_firstmeet)
+
+
+    
+
+print(count, succ, blocked, succ_block, meets)
+
+ft = open("query_list.txt","w+")
+for name in suc_names:
+    ft.write(name+"\n")
+ft.close()
