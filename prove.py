@@ -23,16 +23,25 @@ for l in lines:
         BN.ban(ip,rate)
 
     timestart = time.time()
+    ok = True
     try:
         socket.gethostbyname(query)
         timeend = time.time()
     except:
         timeend = time.time()
+        ok = False
 
     duration = timeend - timestart
 
     latency.append(duration)
+    print(query, duration, ok)
 
     BN.clean()
 
-    time.sleep(10)
+    time.sleep(3)
+
+ff = open("latency_"+str(rate)+".txt","w+")
+for t in latency:
+    ff.write(str(t)+'\n')
+ff.close()
+
