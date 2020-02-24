@@ -415,6 +415,11 @@ class banner:
         if rand >= rate:
             os.system("sudo iptables -A INPUT -s "+ip+" -j DROP")
 
+    def banall(self,query):
+        lis = self.banlist(query)
+        for ip in lis:
+            self.ban(ip,0)
+
     def clean(self):
         os.system("sudo iptables -F")
 
